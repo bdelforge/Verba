@@ -1,13 +1,14 @@
-from fastapi import FastAPI, Request, WebSocket, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-
 import os
 from pathlib import Path
 
+import openai
 from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Request, WebSocket, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.status import HTTP_200_OK, HTTP_500_INTERNAL_SERVER_ERROR
 from starlette.websockets import WebSocketDisconnect
 from wasabi import msg  # type: ignore[import]
 
@@ -18,7 +19,7 @@ from goldenverba.components.generation.interface import Generator
 from goldenverba.components.reader.interface import Reader
 from goldenverba.components.retriever.interface import Retriever
 from goldenverba.server.ConfigManager import ConfigManager
-from goldenverba.server.util import setup_managers
+from goldenverba.server.util import check_api_key, setup_managers, check_manager_initialized, remove_api_key, store_api_key, get_api_key_preview, get_openai_api_config
 
 load_dotenv()
 
@@ -29,20 +30,33 @@ if production_key == "True":
     production = True
 else:
     production = False
+    
 
-manager = verba_manager.VerbaManager()
-config_manager = ConfigManager()
+def init_managers():
+    global manager
+    global config_manager
+    global readers
+    global chunker
+    global embedders
+    global retrievers
+    global generators
+    
+    if not check_api_key():
+        return
+    
+    manager = verba_manager.VerbaManager()
+    config_manager = ConfigManager()
 
-readers = manager.reader_get_readers()
-chunker = manager.chunker_get_chunker()
-embedders = manager.embedder_get_embedder()
-retrievers = manager.retriever_get_retriever()
-generators = manager.generator_get_generator()
+    readers = manager.reader_get_readers()
+    chunker = manager.chunker_get_chunker()
+    embedders = manager.embedder_get_embedder()
+    retrievers = manager.retriever_get_retriever()
+    generators = manager.generator_get_generator()
 
-setup_managers(
-    manager, config_manager, readers, chunker, embedders, retrievers, generators
-)
-config_manager.save_config()
+    setup_managers(
+        manager, config_manager, readers, chunker, embedders, retrievers, generators
+    )
+    config_manager.save_config()
 
 
 def create_reader_payload(key: str, reader: Reader) -> dict:
@@ -105,6 +119,16 @@ def create_generator_payload(key: str, generator: Generator) -> dict:
         "streamable": generator.streamable,
     }
 
+# Init empty global managers
+manager = None
+config_manager = None
+readers = None
+chunker = None
+embedders = None
+retrievers = None
+generators = None
+
+init_managers()
 
 # FastAPI App
 app = FastAPI()
@@ -181,6 +205,10 @@ class GetComponentPayload(BaseModel):
 class SetComponentPayload(BaseModel):
     component: str
     selected_component: str
+    
+
+class APIKeyPayload(BaseModel):
+    key: str
 
 
 @app.get("/")
@@ -212,6 +240,7 @@ async def catch_explorer():
 # Define health check endpoint
 @app.get("/api/health")
 async def root():
+    check_manager_initialized(manager)
     try:
         if manager.client.is_ready():
             return JSONResponse(
@@ -426,7 +455,7 @@ async def load_data(payload: LoadPayload):
                 "status_msg": "Can't add data when in production mode",
             }
         )
-
+    check_manager_initialized(manager)
     manager.reader_set_reader(payload.reader)
     manager.chunker_set_chunker(payload.chunker)
     manager.embedder_set_embedder(payload.embedder)
@@ -494,6 +523,7 @@ async def load_data(payload: LoadPayload):
 @app.post("/api/query")
 async def query(payload: QueryPayload):
     msg.good(f"Received query: {payload.query}")
+    check_manager_initialized(manager)
     try:
         chunks, context = manager.retrieve_chunks([payload.query])
 
@@ -695,3 +725,114 @@ async def delete_document(payload: GetDocumentPayload):
 
     manager.delete_document_by_id(payload.document_id)
     return JSONResponse(content={})
+
+
+@app.post("/api/set_openai_key")
+async def set_openai_key(payload: APIKeyPayload):
+    try:
+        os.environ["OPENAI_API_KEY"] = payload.key      
+        store_api_key(payload.key)
+        
+        init_managers()
+        return JSONResponse(
+            content={
+                "status": str(HTTP_200_OK),
+                "status_msg": "OpenAI key set",
+            }
+        )
+    except Exception as e:
+        msg.fail(f"Failed to set OpenAI API key: {e}")
+        return JSONResponse(
+            content={
+                "status": str(HTTP_500_INTERNAL_SERVER_ERROR),
+                "status_msg": "OpenAI key not set",
+            }
+        )
+
+
+@app.post("/api/unset_openai_key")
+async def unset_openai_key():
+    global manager
+    try:
+        remove_api_key()
+        manager = None
+        init_managers()
+        return JSONResponse(
+            content={
+                "status": str(HTTP_200_OK),
+                "status_msg": "OpenAI key unset",
+            }
+        )
+    except Exception as e:
+        msg.fail(f"Something when wrong when removing OpenAPI key : {e}")
+        return JSONResponse(
+            content={
+                "status": str(HTTP_500_INTERNAL_SERVER_ERROR),
+                "status_msg": "Something went wrong when trying to unset OpenAPI key",
+            }
+        )
+        
+@app.get("/api/get_openai_key_preview")
+async def get_openai_key_preview():
+    if not "OPENAI_API_KEY" in os.environ:
+        return JSONResponse(
+            content={
+                "status": str(HTTP_500_INTERNAL_SERVER_ERROR),
+                "status_msg": "No OPENAI_API_KEY set",
+            }
+    )
+    
+    api_key_preview = get_api_key_preview(os.environ["OPENAI_API_KEY"])
+    return JSONResponse(
+        content={
+            "status": str(HTTP_200_OK),
+            "status_msg": api_key_preview,
+        }
+    )
+        
+@app.get("/api/test_openai_api_key")
+async def test_openai_api_key():
+    config = get_openai_api_config()
+    api_key = config["api_key"]
+    
+    if not api_key:
+        return JSONResponse(
+            content={
+                "status": str(HTTP_500_INTERNAL_SERVER_ERROR),
+                "status_msg": "No OPENAI_API_KEY set",
+            }
+    )
+    
+    try:
+        openai.api_key = config["api_key"]
+        chat_completion_arguments = {
+            "model": config["model"],
+            "messages": [
+                {
+                    "role": "system",
+                    "content": f"You are a Teacher/Professor",
+                },
+                {
+                    "role": "user",
+                    "content": "hello",
+                },
+            ],
+        }
+        if config["api_type"] == "azure":
+            chat_completion_arguments["deployment_id"] = config["model"]
+
+        _ = openai.ChatCompletion.create(**chat_completion_arguments)
+        return JSONResponse(
+            content={
+                "status": str(HTTP_200_OK),
+                "status_msg": "OpenAPI key is working",
+            }
+        )
+    except openai.error.OpenAIError as e:
+        msg.fail(f"OpenAI API returned an error: {e}")
+        return JSONResponse(
+                content={
+                    "status": str(HTTP_500_INTERNAL_SERVER_ERROR),
+                    "status_msg": f"Something when wrong when calling OpenAI API (details: {e})",
+                }
+            )
