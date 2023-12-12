@@ -14,8 +14,8 @@ class QueryResponsePayload(BaseModel):
 
 
 class DocumentChunk(BaseModel):
-    text: str
-    doc_name: str
+    text: str = ""
+    doc_name: str = ""
     chunk_id: int
     doc_uuid: str
     doc_type: str

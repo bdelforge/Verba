@@ -4,7 +4,7 @@ import pathlib
 
 import streamlit as st
 from verba_utils.api_client import APIClient, test_api_connection
-from verba_utils.utils import get_prompt_history, get_retrieved_documents_from_prompt
+from verba_utils.utils import get_prompt_history, get_retrieved_chunks_from_prompt
 
 BASE_ST_DIR = pathlib.Path(os.path.dirname(__file__)).parent
 log = logging.getLogger(__name__)
@@ -60,11 +60,11 @@ else:
             get_prompt_history(),
             index=0,
         )
-        retrieved_documents = get_retrieved_documents_from_prompt(chosen_prompt)
+        retrieved_documents = get_retrieved_chunks_from_prompt(chosen_prompt)
         st.divider()
         for document in retrieved_documents:
             st.text_area(
-                label=f"Document : {document.get('doc_name')} (chunk {document.get('chunk_id')}), retrieval score {document.get('_additional').get('score')}) ",
-                value=f"{document.get('text')}",
+                label=f"Document : {document.doc_name} (chunk {document.chunk_id}), retrieval score {document.score}) ",
+                value=f"{document.text}",
                 height=230,
             )

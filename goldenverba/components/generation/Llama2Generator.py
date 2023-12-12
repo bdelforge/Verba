@@ -165,7 +165,7 @@ class Llama2Generator(Generator):
         """
         llama_prompt = """
         <s>[INST] <<SYS>>
-        You are a Retrieval Augmented Generation chatbot. Answer user queries using only the provided context. If the context does not provide enough information, say so. If the answer requires code examples encapsulate them with ```programming-language-name ```. Don't do pseudo-code. \n<</SYS>>\n\n
+        You are a Retrieval Augmented Generation chatbot. Answer user queries using only the provided context. If the context does not provide enough information, say so. If the answer requires code examples encapsulate them with ```programming-language-name ```. Don't do pseudo-code. Answer in the same language as the language used in the question. \n<</SYS>>\n\n
         """
 
         query = " ".join(queries)

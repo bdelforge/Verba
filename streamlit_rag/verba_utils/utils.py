@@ -1,6 +1,5 @@
 import logging
 import os
-import pathlib
 import shelve
 from typing import Dict, List, Tuple
 
@@ -10,10 +9,10 @@ from verba_utils.api_client import APIClient, test_api_connection
 from verba_utils.payloads import (
     CachedResponse,
     ConversationItem,
+    DocumentChunk,
     DocumentSearchQueryResponsePayload,
     GeneratePayload,
     GenerateResponsePayload,
-    QueryResponsePayload,
     SearchQueryResponsePayload,
 )
 
@@ -33,27 +32,35 @@ def setup_logging(
     logging.basicConfig(level=logging_level, format=log_format)
 
 
-def write_centered_text(text: str):
-    st.markdown(
-        f"""<div style=\"text-align: justify;\">{text}</div>""",
-        unsafe_allow_html=True,
-    )
-    st.write("\n")
-
-
 def create_conversation_items(
     session_state_messages: List[Dict],
 ) -> List[ConversationItem]:
-    result = []
-    for element in session_state_messages:
-        if "typewriter" in element:
+    """Creates a list of ConversationItem objects from a list of dictionaries representing messages (usually st.session_state["messages"]).
+    If the last message in the list contains the "typewriter" key with the value set to `False`, that message is ignored (last user prompt).
+    Otherwise, each message that includes the "typewriter" key is attempted to be converted into a ConversationItem object.
+
+    :param session_state_messages: List[Dict] -> a list of message dictionaries to be converted into ConversationItems
+    :returns: List[ConversationItem] excluding the last message if it has "typewriter": False
+    """
+
+    conversation_items = []
+
+    # Determine the range for the iteration based on the last element condition (ignore last user prompt)
+    if session_state_messages and session_state_messages[-1].get("typewriter") is True:
+        messages_to_process = session_state_messages[:-1]
+    else:
+        messages_to_process = session_state_messages
+
+    for message in messages_to_process:
+        if "typewriter" in message:
             try:
-                result.append(ConversationItem(**element))
+                conversation_items.append(ConversationItem(**message))
             except ValidationError as e:
-                log.warning(
-                    f"Impossible to convert this message as ConversationItem : {element}, details : {e}"
+                log.warn(
+                    f"Impossible to convert this message as ConversationItem: {message}, details: {e}"
                 )
-    return result
+
+    return conversation_items
 
 
 def generate_answer(
@@ -68,8 +75,7 @@ def generate_answer(
     Generate answers to a list of questions. Uses the previously defined query_verba
     :param prompt: str
     :param api_client: APIClient
-    :param conversation: List[ConversationItem] (use create_conversation_items() to create it).
-                         You cant leave it empty if you don't want to use this feature.
+    :param conversation: List[ConversationItem] (use utils.create_conversation_items to create it).
     :param min_nb_words: int
     :param max_nb_words: int
     :param return_documents: bool default False. If true returns (text_response, documents_list)
@@ -90,24 +96,24 @@ def generate_answer(
     log.info(f"Cleaned user query : {elaborated_question}")
 
     if test_api_connection(api_client):
-        document_query_response = api_client.query(elaborated_question)
+        query_response = api_client.query(elaborated_question)
         if (
-            document_query_response.system is not None
+            query_response.system is not None
         ):  # Error when retrieving documents (Verba side)
             log.warning(
-                f'Something went wrong when retrieving documents (verba side) : "{document_query_response.system}"'
+                f'Something went wrong when retrieving documents (verba side) : "{query_response.system}"'
             )
-            response = GenerateResponsePayload(system=document_query_response.system)
-        else:
+            response = GenerateResponsePayload(system=query_response.system)
+        else:  # query went fine, now generate LLM response
             response = api_client.generate(
                 GeneratePayload(
                     query=prompt,
-                    context=document_query_response.context,
+                    context=query_response.context,
                     conversation=conversation,
-                    # conversation=[],
                 )
             )
             if isinstance(response.system, CachedResponse):
+                # Verba returns a different payload format when the answer is from cache...
                 response.system = response.system.message
     else:
         log.error(
@@ -116,33 +122,9 @@ def generate_answer(
         response = GenerateResponsePayload(system="Verba API not available")
 
     if return_documents:
-        return response.system, document_query_response.documents
+        return response.system, query_response.documents
     else:
         return response.system
-
-
-def display_centered_image(
-    image,
-    caption=None,
-    width=None,
-    use_column_width=None,
-    clamp=False,
-    channels="RGB",
-    output_format="auto",
-):
-    if isinstance(image, pathlib.PosixPath):
-        image = str(image)
-    # trick to center the image (make 3 columns and display the image in the middle column which is big)
-    with st.columns([0.1, 0.98, 0.1])[1]:
-        st.image(
-            image,
-            caption=caption,
-            width=width,
-            use_column_width=use_column_width,
-            clamp=clamp,
-            channels=channels,
-            output_format=output_format,
-        )
 
 
 def append_documents_in_session_manager(prompt: str, documents: List[Dict]):
@@ -170,7 +152,7 @@ def get_prompt_history() -> List[str]:
         return [e["prompt"] for e in reversed(st.session_state["retrieved_documents"])]
 
 
-def get_retrieved_documents_from_prompt(prompt: str) -> List[Dict]:
+def get_retrieved_chunks_from_prompt(prompt: str) -> List[DocumentChunk]:
     """Get the documents retrieved to generate answer to the given prompt
     :param str prompt:
     :return List[Dict]:
@@ -240,8 +222,8 @@ def reset_chatbot_title():
     weaviate_tenant = os.getenv("WEAVIATE_TENANT", default="default_tenant")
     log.info(f"Resetting chatbot title (tenant {weaviate_tenant})")
 
-    with shelve.open("key_cache") as db:
-        key = f"{weaviate_tenant}_title"
+    with shelve.open(f"shelve/key_cache_{weaviate_tenant}") as db:
+        key = f"title"
         if key in db:
             del db[key]
         else:

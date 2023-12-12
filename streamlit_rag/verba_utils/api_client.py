@@ -116,7 +116,7 @@ class APIClient:
         response = self.make_request(
             method="POST",
             endpoint=self.api_routes.generate,
-            data=generate_payload.model_dump_json(),
+            json=generate_payload.model_dump(),
         )
         if response.status_code == requests.status_codes.codes["ok"]:
             try:
@@ -129,7 +129,9 @@ class APIClient:
             log.warning(
                 f"POST /generate returned code [{response.status_code}] -> details {response.content}"
             )
-        return GenerateResponsePayload()
+            return GenerateResponsePayload(
+                system=f"Sorry, something went wrong when proceeding your query. \n\nDetails : `{response.content}`"
+            )
 
     def get_all_documents(
         self, query: str = "", doc_type: str = ""

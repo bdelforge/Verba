@@ -8,6 +8,7 @@ from st_pages import Page, show_pages
 from verba_utils.api_client import APIClient, test_api_connection
 from verba_utils.utils import (
     append_documents_in_session_manager,
+    create_conversation_items,
     generate_answer,
     get_chatbot_title,
     setup_logging,
@@ -91,7 +92,7 @@ def main(verba_port, verba_base_url, chunk_size):
         if "messages" not in st.session_state.keys():
             st.session_state.messages = [
                 {
-                    "role": "system",
+                    "type": "system",
                     "content": "Greetings! I am your chatbot assistant, here to help. If the answers to your questions are in the documents you've uploaded, I can provide them. While you're free to ask in any language, for the best results, I recommend using the language of the uploaded documents.",
                 }  # NOTE : I do not define "typewriter" on purpose, I want this message to be ignored when building conversation_items payload
             ]
@@ -99,9 +100,9 @@ def main(verba_port, verba_base_url, chunk_size):
         # Display chat messages
         for message in st.session_state.messages:
             with st.chat_message(
-                message["role"],
+                message["type"],
                 avatar=str(BASE_ST_DIR / "assets/WL.png")
-                if message["role"] == "system"
+                if message["type"] == "system"
                 else None,
             ):
                 st.markdown(message["content"])
@@ -109,29 +110,34 @@ def main(verba_port, verba_base_url, chunk_size):
         # User-provided prompt
         if prompt := st.chat_input():
             st.session_state.messages.append(
-                {"role": "user", "content": prompt, "typewriter": True}
+                {"type": "user", "content": prompt, "typewriter": True}
             )
             with st.chat_message("user"):
                 st.markdown(prompt)
 
         # Generate a new response if last message is not from system
-        if st.session_state.messages[-1]["role"] != "system":
+        if st.session_state.messages[-1]["type"] != "system":
             with st.chat_message("system", avatar=str(BASE_ST_DIR / "assets/WL.png")):
                 with st.spinner("Thinking..."):
-                    log.debug(f"User prompt : {prompt}")
                     response, documents = None, None
                     if prompt is not None:
+                        conversation = create_conversation_items(
+                            st.session_state.get("messages", [])
+                        )
                         response, documents = generate_answer(
                             prompt,
                             api_client,
+                            conversation=conversation,
                             max_nb_words=max_worlds_answers,
                             return_documents=True,
                         )
                         st.markdown(response)
+                        with st.expander("conversation"):
+                            st.write(conversation)
                         append_documents_in_session_manager(prompt, documents)
                     if response:
                         message = {
-                            "role": "system",
+                            "type": "system",
                             "content": response,
                             "typewriter": False,
                         }

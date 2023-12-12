@@ -132,7 +132,7 @@ class CohereGenerator(Generator):
         messages = [
             {
                 "role": "CHATBOT",
-                "message": "I am a Retrieval Augmented Generation chatbot. I'll answer user queries only with their provided context. If the provided documentation does not provide enough information, I say so. If the answer requires code examples I encapsulate them with ```programming-language-name ```. I don't do pseudo-code.",
+                "message": "I am a Retrieval Augmented Generation chatbot. I'll answer user queries only with their provided context. If the provided documentation does not provide enough information, I say so. If the answer requires code examples I encapsulate them with ```programming-language-name ```. I don't do pseudo-code. I Answer in the same language as the language used in the question.",
             }
         ]
 
