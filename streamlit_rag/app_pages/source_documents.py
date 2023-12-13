@@ -1,13 +1,21 @@
 import logging
 import os
 import pathlib
+from typing import Dict
 
 import streamlit as st
 from verba_utils.api_client import APIClient, test_api_connection
+from verba_utils.payloads import DocumentChunk
 from verba_utils.utils import get_prompt_history, get_retrieved_chunks_from_prompt
 
 BASE_ST_DIR = pathlib.Path(os.path.dirname(__file__)).parent
+NUM_COLUMNS = 3
+
 log = logging.getLogger(__name__)
+
+
+def handle_load_more():
+    st.session_state["displayed_chunks"] += 1
 
 
 st.set_page_config(
@@ -61,10 +69,33 @@ else:
             index=0,
         )
         retrieved_documents = get_retrieved_chunks_from_prompt(chosen_prompt)
-        st.divider()
-        for document in retrieved_documents:
-            st.text_area(
-                label=f"Document : {document.doc_name} (chunk {document.chunk_id}), retrieval score {document.score}) ",
-                value=f"{document.text}",
-                height=230,
-            )
+
+        # Empty container to hold button callbacks
+        button_callbacks: Dict[str, DocumentChunk] = {}
+
+        # Display the grid of buttons per retrieved_documents
+        for i, element in enumerate(retrieved_documents):
+            # This will create a new row after every num_columns items
+            if i % NUM_COLUMNS == 0:
+                cols = st.columns(NUM_COLUMNS)  # Create new columns
+
+            # Define the button and its callback within the corresponding column
+            with cols[i % NUM_COLUMNS]:  # Selects the correct column
+                # Unique key for each button (you can also use other methods to generate a unique key)
+                button_key = f"button_{i}"
+
+                # Create the button and check if it's clicked
+                if st.button(
+                    f"{element.doc_name} [Score {element.score:.2f}]", key=button_key
+                ):
+                    # Store or process the click event
+                    button_callbacks[button_key] = element
+                    st.session_state["displayed_chunks"] = 1
+
+        for key, document_chunk in button_callbacks.items():
+            with st.expander(
+                f":green[Document : {document_chunk.doc_name} - Chunk {document_chunk.chunk_id}]",
+                expanded=True,
+            ):
+                with st.container():
+                    st.markdown(document_chunk.text)

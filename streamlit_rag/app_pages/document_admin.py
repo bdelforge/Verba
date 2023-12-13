@@ -5,21 +5,18 @@ import pathlib
 
 import streamlit as st
 from verba_utils.api_client import APIClient, test_api_connection
-from verba_utils.payloads import LoadPayload
-from verba_utils.utils import doc_id_from_filename, get_ordered_all_filenames
+from verba_utils.payloads import ChunkerEnum, LoadPayload
+from verba_utils.utils import (
+    doc_id_from_filename,
+    filter_documents,
+    get_ordered_all_filenames,
+)
 
 log = logging.getLogger(__name__)
 
-try:
-    CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", 300))
-except ValueError:
-    CHUNK_SIZE = 300
-    log.warn(
-        f"Can't cast os.environ.get('CHUNK_SIZE', 300) to int, value : {os.environ.get('CHUNK_SIZE', 300)}. Setting it to default {CHUNK_SIZE}"
-    )
-
 
 BASE_ST_DIR = pathlib.Path(os.path.dirname(__file__)).parent
+
 try:
     CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", 300))
 except ValueError:
@@ -36,13 +33,19 @@ st.set_page_config(
     page_icon=str(BASE_ST_DIR / "assets/WL_icon.png"),
 )
 
-st.sidebar.header("Config")
+st.sidebar.header("Document upload config")
 chuck_size = st.sidebar.slider(
     "Select chunk size (let default if you don't know)",
     min_value=50,
     max_value=1000,
     value=CHUNK_SIZE,
     step=50,
+)
+
+chunker = st.sidebar.selectbox(
+    "Select a chunker (let default if you don't know)",
+    [e.value for e in ChunkerEnum],
+    index=0,
 )
 
 
@@ -91,19 +94,39 @@ else:
         doc_list, doc_preview = st.columns([0.3, 0.7])
 
         with doc_list:  # display all found document as an ordered radio list
-            if st.button("🔄 Refresh list", type="primary"):
-                # when the button is clicked, the page will refresh by itself :)
-                log.debug("Refresh page")
-
             all_documents = api_client.get_all_documents()
-            if len(all_documents.documents) > 0:
-                # if some documents are found display radio list
-                chosen_doc = st.radio(
-                    "Choose the document you want to inspect",
-                    get_ordered_all_filenames(all_documents.documents),
+            filtered_documents = all_documents.documents
+
+            if len(filtered_documents) > 0:
+                st.subheader("Search filters")
+                selected_doc_types = st.multiselect(
+                    "Select the document type",
+                    all_documents.doc_types,
                 )
+
+                if len(selected_doc_types) > 0:
+                    filtered_documents = [
+                        doc
+                        for doc in filtered_documents
+                        if doc.doc_type in selected_doc_types
+                    ]
+
+                chosen_doc = st.selectbox(
+                    f"Select a document: (total : {len(filtered_documents)})",
+                    get_ordered_all_filenames(filtered_documents),
+                    index=None if len(filtered_documents) > 1 else 0,
+                    placeholder="Type part of filename",
+                )
+
+                if st.button("🔄 Refresh list", type="primary"):
+                    # when the button is clicked, the page will refresh by itself :)
+                    log.debug("Refresh page")
+
             else:
                 chosen_doc = None
+                if st.button("🔄 Refresh list", type="primary"):
+                    # when the button is clicked, the page will refresh by itself :)
+                    log.debug("Refresh page")
                 st.write("No document found")
 
         with doc_preview:  # display select document text content
@@ -113,12 +136,13 @@ else:
                     all_documents,
                 )
                 doc_info = api_client.get_document(document_id)
-                st.header(chosen_doc)
-
+                st.header(
+                    f"{chosen_doc} :red[[{doc_info.document.properties.doc_type}]]"
+                )
                 st.text_area(
-                    label=f"(Document id : {document_id}, chunks count : {doc_info.document.properties.chunk_count})",
+                    label=f"Upload date: {doc_info.document.properties.timestamp} - Document id : {document_id} - Chunks count : {doc_info.document.properties.chunk_count}",
                     value=doc_info.document.properties.text,
-                    height=700,
+                    height=600,
                 )
 
     with insert_tab:
@@ -137,7 +161,7 @@ else:
                 )
                 loadPayload = LoadPayload(
                     reader="SimpleReader",
-                    chunker="WordChunker",
+                    chunker=chunker,
                     embedder="ADAEmbedder",
                     document_type=document_type,
                     chunkUnits=chuck_size,

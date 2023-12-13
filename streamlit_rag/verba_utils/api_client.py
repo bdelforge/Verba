@@ -30,6 +30,7 @@ class API_routes(BaseSettings):
     health: str = "health"
     query: str = "query"
     generate: str = "generate"
+    reset_cache:str = "reset_cache"
     get_all_documents: str = "get_all_documents"
     get_document: str = "get_document"
     get_components: str = "get_components"
@@ -97,7 +98,7 @@ class APIClient:
         response = self.make_request(
             method="POST",
             endpoint=self.api_routes.query,
-            json={"query": data.decode("utf-8")},
+            json=QueryPayload(query=data.decode("utf-8")).model_dump(),
         )
         if response.status_code == requests.status_codes.codes["ok"]:
             try:
@@ -109,7 +110,7 @@ class APIClient:
         else:
             log.warning(f"POST query returned code [{response.status_code}]")
         return QueryResponsePayload(
-            system="Sorry, something went wrong when proceeding your request"
+            system=f"Sorry, something went wrong when proceeding your request. Details -> `{response}`"
         )
 
     def generate(self, generate_payload: GeneratePayload) -> GenerateResponsePayload:
@@ -130,8 +131,19 @@ class APIClient:
                 f"POST /generate returned code [{response.status_code}] -> details {response.content}"
             )
             return GenerateResponsePayload(
-                system=f"Sorry, something went wrong when proceeding your query. \n\nDetails : `{response.content}`"
+                system=f"""
+                Sorry, something went wrong when proceeding your query (server side).
+                If the error bellow is about **model's maximum context length being too short for your message**, 
+                click on `reset conversation` and try again your prompt. Additionally, please inform the maintainers (MS Data Platform), they can increase it.
+                
+                
+                Server error response details : `{response.content}`
+                """
             )
+            
+    def reset_cache(self) -> bool:
+        response = self.make_request("GET", self.api_routes.reset_cache)
+        return response.status_code == requests.status_codes.codes["ok"]
 
     def get_all_documents(
         self, query: str = "", doc_type: str = ""

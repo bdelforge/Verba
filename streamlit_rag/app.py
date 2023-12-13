@@ -79,9 +79,6 @@ def main(verba_port, verba_base_url, chunk_size):
     else:  # verba api connected
         st.title(f"🤖 {TITLE} 🟢")
 
-        with st.expander("session_state"):
-            st.write(st.session_state)
-
         if st.button("Reset conversation", type="primary"):
             # Delete message and document items in session state
             if "messages" in st.session_state:
@@ -129,11 +126,10 @@ def main(verba_port, verba_base_url, chunk_size):
                             api_client,
                             conversation=conversation,
                             max_nb_words=max_worlds_answers,
+                            min_nb_words=min_worlds_answers,
                             return_documents=True,
                         )
                         st.markdown(response)
-                        with st.expander("conversation"):
-                            st.write(conversation)
                         append_documents_in_session_manager(prompt, documents)
                     if response:
                         message = {
@@ -174,12 +170,15 @@ if __name__ == "__main__":
         ]
     )
 
-    st.sidebar.header("Config")
-    max_worlds_answers = st.sidebar.slider(
-        "Select maximum words in answer:",
-        min_value=40,
-        max_value=500,
-        value=100,
-        step=20,
-    )
+    st.sidebar.header("Answers config")
+    if st.sidebar.checkbox("Set min/max words in LLM answer"):
+        min_worlds_answers, max_worlds_answers = st.sidebar.slider(
+            "Select a range of values",
+            min_value=50,
+            max_value=500,
+            value=(50, 100),
+            step=50,
+        )
+    else:
+        min_worlds_answers, max_worlds_answers = None, None
     main()

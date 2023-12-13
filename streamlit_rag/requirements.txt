@@ -1,7 +1,6 @@
 python-dotenv
 streamlit
 st-pages
-streamlit-option-menu
 pydantic
 pydantic-settings
 pyparsing

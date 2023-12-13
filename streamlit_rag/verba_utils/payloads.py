@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field
@@ -7,19 +8,13 @@ class QueryPayload(BaseModel):
     query: str
 
 
-class QueryResponsePayload(BaseModel):
-    system: Optional[str]
-    context: str = ""
-    documents: List[dict] = []
-
-
 class DocumentChunk(BaseModel):
     text: str = ""
     doc_name: str = ""
     chunk_id: int
     doc_uuid: str
     doc_type: str
-    score: str
+    score: float
 
 
 class QueryResponsePayload(BaseModel):
@@ -103,9 +98,14 @@ class GenerateResponsePayload(BaseModel):
     system: str | CachedResponse = None
 
 
+class ChunkerEnum(Enum):
+    WORDCHUNKER = "WordChunker"
+    TOKENCHUNKER = "TokenChunker"
+
+
 class LoadPayload(BaseModel):
     reader: str = "SimpleReader"
-    chunker: str = "WordChunker"
+    chunker: str = ChunkerEnum.WORDCHUNKER.value
     embedder: str = "ADAEmbedder"
     fileBytes: List[str] = []
     fileNames: List[str] = []

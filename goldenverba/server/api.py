@@ -625,12 +625,12 @@ async def generate(payload: GeneratePayload):
         )
 
     except Exception as e:
-        raise
         msg.fail(f"Answer Generation failed: {str(e)}")
         return JSONResponse(
             content={
                 "system": f"Something went wrong! {str(e)}",
-            }
+            },
+            status_code=HTTP_500_INTERNAL_SERVER_ERROR
         )
 
 

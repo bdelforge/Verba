@@ -1,7 +1,6 @@
 import logging
 import os
 import pathlib
-import shelve
 
 import streamlit as st
 from verba_utils.api_client import APIClient, test_api_connection
@@ -148,3 +147,14 @@ else:
             st.success(
                 f"✅ Chatbot title successfully set to default (`{get_chatbot_title()}`)"
             )
+    st.subheader(":red[Danger Zone]", divider="red")
+    col0, col1 = st.columns(2)
+    if col0.checkbox(":red[Reset cache]") and col1.button(
+        "I am sure I want to reset cache", type="primary"
+    ):
+        with st.spinner("Resetting cache..."):
+            success = api_client.reset_cache()
+            if success:
+                st.info("Cache successfully reset")
+            else:
+                st.error("Something went wrong when resetting cache")

@@ -82,12 +82,14 @@ def generate_answer(
     :returns: str | Tuple(str, List)
     """
 
+    # Apply the logic for setting min/max words depending on the provided values
     if max_nb_words is None and min_nb_words is not None:
         max_nb_words = min_nb_words * 2
-    if min_nb_words is None and max_nb_words is not None:
+    elif min_nb_words is None and max_nb_words is not None:
         min_nb_words = max_nb_words // 2
 
-    if min_nb_words is not None:  # so max_nb_words is not None either
+    # Add the appendix only if both min_nb_words and max_nb_words have values
+    if min_nb_words is not None and max_nb_words is not None:
         question_appendix = f" Please provide an elaborated answer in {min_nb_words} to {max_nb_words} words."
     else:
         question_appendix = ""
@@ -154,12 +156,13 @@ def get_prompt_history() -> List[str]:
 
 def get_retrieved_chunks_from_prompt(prompt: str) -> List[DocumentChunk]:
     """Get the documents retrieved to generate answer to the given prompt
+    They will be sorted by decreasing score
     :param str prompt:
-    :return List[Dict]:
+    :return List[DocumentChunk]:
     """
-    for e in reversed(st.session_state["retrieved_documents"]):
+    for e in reversed(st.session_state.get("retrieved_documents", [])):
         if e["prompt"] == prompt:
-            return e["documents"]
+            return sorted(e["documents"], key=lambda chunk: chunk.score, reverse=True)
     return []
 
 
@@ -228,3 +231,12 @@ def reset_chatbot_title():
             del db[key]
         else:
             log.info(f"{weaviate_tenant} is not in the shelve database.")
+
+
+def filter_documents(documents: List[DocumentSearchQueryResponsePayload], query: str):
+    query = query.lower()
+    return [
+        document
+        for document in documents
+        if query in document.doc_name.lower() or query in document.doc_type.lower()
+    ]
