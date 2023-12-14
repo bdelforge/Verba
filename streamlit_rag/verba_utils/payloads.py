@@ -18,13 +18,9 @@ class DocumentChunk(BaseModel):
 
 
 class QueryResponsePayload(BaseModel):
-    documents: List[DocumentChunk] = []
+    documents: List[DocumentChunk] = Field(default_factory=list)
     context: str = ""
     system: Optional[str] = None
-
-
-class APIKeyPayload(BaseModel):
-    key: str
 
 
 class SearchQueryPayload(BaseModel):
@@ -43,8 +39,8 @@ class DocumentSearchQueryResponsePayload(BaseModel):
 
 
 class SearchQueryResponsePayload(BaseModel):
-    documents: List[DocumentSearchQueryResponsePayload]
-    doc_types: List
+    documents: List[DocumentSearchQueryResponsePayload] = Field(default_factory=list)
+    doc_types: List[str] = Field(default_factory=list)
     current_embedder: str
 
 
@@ -55,24 +51,24 @@ class GetDocumentPayload(BaseModel):
 class GetDocumentResponsePayload(BaseModel):
     class DocumentResponsePayload(BaseModel):
         class DocumentPropertiesResponsePayload(BaseModel):
-            chunk_count: int = 0
-            doc_link: str = ""
-            doc_name: str = ""
-            doc_type: str = ""
-            text: str = ""
-            timestamp: str = ""
+            chunk_count: int
+            doc_link: str
+            doc_name: str
+            doc_type: str
+            text: str
+            timestamp: str
 
-        document_class: str = Field(alias="class", default="")
-        creationTimeUnix: int = 0
-        id: str = ""
-        lastUpdateTimeUnix: int = 0
-        properties: DocumentPropertiesResponsePayload = (
-            DocumentPropertiesResponsePayload()
+        document_class: str = Field(alias="class")
+        creationTimeUnix: int
+        id: str
+        lastUpdateTimeUnix: int
+        properties: DocumentPropertiesResponsePayload = Field(
+            default_factory=DocumentPropertiesResponsePayload
         )
-        tenant: str = ""
-        vectorWeights: Any = None
+        tenant: str
+        vectorWeights: Optional[Any]
 
-    document: DocumentResponsePayload = DocumentResponsePayload()
+    document: DocumentResponsePayload = Field(default_factory=DocumentResponsePayload)
 
 
 class ConversationItem(BaseModel):
@@ -84,7 +80,7 @@ class ConversationItem(BaseModel):
 class GeneratePayload(BaseModel):
     query: str
     context: str
-    conversation: List[ConversationItem]
+    conversation: List[ConversationItem] = Field(default_factory=list)
 
 
 class CachedResponse(BaseModel):
@@ -99,25 +95,25 @@ class GenerateResponsePayload(BaseModel):
 
 
 class ChunkerEnum(Enum):
-    WORDCHUNKER = "WordChunker"
     TOKENCHUNKER = "TokenChunker"
+    WORDCHUNKER = "WordChunker"
 
 
 class LoadPayload(BaseModel):
     reader: str = "SimpleReader"
-    chunker: str = ChunkerEnum.WORDCHUNKER.value
+    chunker: str = ChunkerEnum.TOKENCHUNKER.value
     embedder: str = "ADAEmbedder"
-    fileBytes: List[str] = []
-    fileNames: List[str] = []
+    fileBytes: List[str] = Field(default_factory=list)
+    fileNames: List[str] = Field(default_factory=list)
     filePath: str = ""
-    document_type: str = ""
+    document_type: str
     chunkUnits: int = 100
-    chunkOverlap: int = 50
+    chunkOverlap: int = 500
 
 
 class LoadResponsePayload(BaseModel):
-    status: int = 0
-    status_msg: str = ""
+    status: int
+    status_msg: str
 
 
 class GetComponentPayload(BaseModel):

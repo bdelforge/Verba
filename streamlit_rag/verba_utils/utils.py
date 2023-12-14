@@ -119,7 +119,7 @@ def generate_answer(
                 response.system = response.system.message
     else:
         log.error(
-            f"Verba API not available {api_client.build_url(api_client.api_routes.health)}, query not submitted"
+            f"Verba API not available {api_client._build_url(api_client.api_routes.health)}, query not submitted"
         )
         response = GenerateResponsePayload(system="Verba API not available")
 
@@ -166,18 +166,18 @@ def get_retrieved_chunks_from_prompt(prompt: str) -> List[DocumentChunk]:
     return []
 
 
-def doc_id_from_filename(
-    filename: str, search_query_response: SearchQueryResponsePayload
+def get_doc_id_from_filename(
+    filename: str, documents: List[DocumentSearchQueryResponsePayload]
 ) -> str | None:
     """Returns doc id from a given filename (that must be in the provided search_query_response)
     :param str filename:
     :param SearchQueryResponsePayload search_query_response:
-    :return str | None: doc id if document found else None
+    :return str | None: doc id if document is found else None
     """
-    for e in dict(search_query_response).get("documents", []):
-        if e.doc_name == filename:
-            return e.additional.id
-    return None
+    return next(
+        (e.additional.id for e in documents if e.doc_name == filename),
+        None,
+    )
 
 
 def get_ordered_all_filenames(
@@ -231,12 +231,3 @@ def reset_chatbot_title():
             del db[key]
         else:
             log.info(f"{weaviate_tenant} is not in the shelve database.")
-
-
-def filter_documents(documents: List[DocumentSearchQueryResponsePayload], query: str):
-    query = query.lower()
-    return [
-        document
-        for document in documents
-        if query in document.doc_name.lower() or query in document.doc_type.lower()
-    ]

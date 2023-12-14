@@ -1,5 +1,5 @@
 import logging
-from typing import Dict
+from typing import Dict, NamedTuple
 
 import requests
 from pydantic import Field
@@ -24,13 +24,11 @@ from verba_utils.payloads import (
 log = logging.getLogger(__name__)
 
 
-class API_routes(BaseSettings):
-    verba_port: str | int = Field(default="8000", env="VERBA_PORT")
-    verba_base_url: str = Field(default="http://localhost", env="VERBA_BASE_URL")
+class APIRoutes(NamedTuple):
     health: str = "health"
     query: str = "query"
     generate: str = "generate"
-    reset_cache:str = "reset_cache"
+    reset_cache: str = "reset_cache"
     get_all_documents: str = "get_all_documents"
     get_document: str = "get_document"
     get_components: str = "get_components"
@@ -41,6 +39,11 @@ class API_routes(BaseSettings):
     unset_openai_key: str = "unset_openai_key"
     test_openai_api_key: str = "test_openai_api_key"
 
+
+class ServerSettings(BaseSettings):
+    verba_port: str | int = Field(default="8000", env="VERBA_PORT")
+    verba_base_url: str = Field(default="http://localhost", env="VERBA_BASE_URL")
+
     @property
     def base_api_url(self) -> str:
         return f"{self.verba_base_url}:{self.verba_port}/api"
@@ -48,7 +51,16 @@ class API_routes(BaseSettings):
 
 class APIClient:
     def __init__(self):
-        self.api_routes = API_routes()
+        self.api_routes = APIRoutes()
+        self.server_settings = ServerSettings()
+
+    def _build_url(self, endpoint: str) -> str:
+        """Helper function to build the endpoint url
+
+        :param str endpoint: one attribute of API_routes
+        :return str:
+        """
+        return f"{self.server_settings.base_api_url}/{endpoint}"
 
     def make_request(
         self, method, endpoint, params=None, data=None, json=None
@@ -65,33 +77,25 @@ class APIClient:
         headers = {
             "content-type": "application/json",
         }
-        url = self.build_url(endpoint)
+        url = self._build_url(endpoint)
         log.info(f"Sending {method} request to {url}")
         return requests.request(
             method,
             url,
             params=params,
             json=json,
-            data=data,
+            # data=data,
             headers=headers,
         )
 
-    def build_url(self, endpoint: str) -> str:
-        """Helper function to build the endpoint url
-
-        :param str endpoint: one attribute of API_routes
-        :return str:
-        """
-        return f"{self.api_routes.base_api_url}/{endpoint}"
-
     @retry(
-        stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10)
+        stop=stop_after_attempt(4), wait=wait_exponential(multiplier=1, min=2, max=10)
     )
     def health_check(self) -> requests.Response:
-        # If this function fails three times in a row,
-        # it will stop being retried after approximately 6 seconds
-        # (2 seconds for the second attempt + 4 seconds for the third attempt).
-        # This is meant to avoid error when verba is starting
+        # If this function fails four times in a row,
+        # it will stop being retried after approximately 14 seconds
+        # (2 seconds for the second attempt + 4 seconds for the third attempt + 8 seconds for the fourth attempt).
+        # This is meant to avoid error when verba is starting and not ready yet
         return self.make_request("GET", self.api_routes.health)
 
     def query(self, data: str) -> QueryResponsePayload:
@@ -100,7 +104,7 @@ class APIClient:
             endpoint=self.api_routes.query,
             json=QueryPayload(query=data.decode("utf-8")).model_dump(),
         )
-        if response.status_code == requests.status_codes.codes["ok"]:
+        if response.status_code == requests.codes.ok:
             try:
                 return QueryResponsePayload.model_validate(response.json())
             except ValidationError as e:
@@ -119,7 +123,7 @@ class APIClient:
             endpoint=self.api_routes.generate,
             json=generate_payload.model_dump(),
         )
-        if response.status_code == requests.status_codes.codes["ok"]:
+        if response.status_code == requests.codes.ok:
             try:
                 return GenerateResponsePayload.model_validate(response.json())
             except ValidationError as e:
@@ -140,10 +144,10 @@ class APIClient:
                 Server error response details : `{response.content}`
                 """
             )
-            
+
     def reset_cache(self) -> bool:
         response = self.make_request("GET", self.api_routes.reset_cache)
-        return response.status_code == requests.status_codes.codes["ok"]
+        return response.status_code == requests.codes.ok
 
     def get_all_documents(
         self, query: str = "", doc_type: str = ""
@@ -151,9 +155,9 @@ class APIClient:
         response = self.make_request(
             method="POST",
             endpoint=self.api_routes.get_all_documents,
-            data=SearchQueryPayload(query=query, doc_type=doc_type).model_dump_json(),
+            json=SearchQueryPayload(query=query, doc_type=doc_type).model_dump(),
         )
-        if response.status_code == requests.status_codes.codes["ok"]:
+        if response.status_code == requests.codes.ok:
             try:
                 return SearchQueryResponsePayload.model_validate(response.json())
             except ValidationError as e:
@@ -168,9 +172,9 @@ class APIClient:
         response = self.make_request(
             method="POST",
             endpoint=self.api_routes.get_document,
-            data=GetDocumentPayload(document_id=document_id).model_dump_json(),
+            json=GetDocumentPayload(document_id=document_id).model_dump(),
         )
-        if response.status_code == requests.status_codes.codes["ok"]:
+        if response.status_code == requests.codes.ok:
             try:
                 return GetDocumentResponsePayload.model_validate(response.json())
             except ValidationError as e:
@@ -193,7 +197,7 @@ class APIClient:
             endpoint=self.api_routes.load_data,
             json=loadPayload.model_dump(),
         )
-        if response.status_code == requests.status_codes.codes["ok"]:
+        if response.status_code == requests.codes.ok:
             try:
                 return LoadResponsePayload.model_validate(response.json())
             except ValidationError as e:
@@ -212,9 +216,9 @@ class APIClient:
         response = self.make_request(
             method="POST",
             endpoint=self.api_routes.delete_document,
-            data=GetDocumentPayload(document_id=document_id).model_dump_json(),
+            json=GetDocumentPayload(document_id=document_id).model_dump(),
         )
-        if response.status_code == requests.status_codes.codes["ok"]:
+        if response.status_code == requests.codes.ok:
             return True
         else:
             log.warning(f"POST query returned code [{response.status_code}]")
@@ -224,9 +228,9 @@ class APIClient:
         response = self.make_request(
             method="POST",
             endpoint=self.api_routes.set_openai_key,
-            data=APIKeyPayload(key=api_key).model_dump_json(),
+            json=APIKeyPayload(key=api_key).model_dump(),
         )
-        if response.status_code == requests.status_codes.codes["ok"]:
+        if response.status_code == requests.codes.ok:
             try:
                 return APIKeyResponsePayload.model_validate(response.json())
             except ValidationError as e:
@@ -246,14 +250,14 @@ class APIClient:
             "GET", self.api_routes.get_openai_key_preview
         ).json()
 
-        if response["status"] == "200":
+        if response["status"] == str(requests.codes.ok):
             return response["status_msg"]
         else:
             return ""
 
     def unset_openai_key(self) -> bool:
         response = self.make_request("POST", self.api_routes.unset_openai_key).json()
-        return response["status"] == "200"
+        return response["status"] == str(requests.codes.ok)
 
     def test_openai_api_key(self) -> Dict:
         response = self.make_request("GET", self.api_routes.test_openai_api_key)
@@ -269,7 +273,7 @@ def test_api_connection(api_client: APIClient) -> dict:
     """
     try:
         response = api_client.health_check()
-        if response.status_code == requests.status_codes.codes["ok"]:
+        if response.status_code == requests.codes.ok:
             return {"is_ok": True}
         else:
             log.error(f"API health status code :{response.status_code}")

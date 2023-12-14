@@ -14,10 +14,6 @@ NUM_COLUMNS = 3
 log = logging.getLogger(__name__)
 
 
-def handle_load_more():
-    st.session_state["displayed_chunks"] += 1
-
-
 st.set_page_config(
     initial_sidebar_state="expanded",
     layout="centered",
@@ -90,7 +86,6 @@ else:
                 ):
                     # Store or process the click event
                     button_callbacks[button_key] = element
-                    st.session_state["displayed_chunks"] = 1
 
         for key, document_chunk in button_callbacks.items():
             with st.expander(

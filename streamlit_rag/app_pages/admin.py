@@ -15,6 +15,19 @@ BASE_ST_DIR = pathlib.Path(os.path.dirname(__file__)).parent
 log = logging.getLogger(__name__)
 
 
+def test_api_key():
+    res = api_client.test_openai_api_key()
+    if res["status"] == "200":
+        st.success("✅ API key is working")
+    else:
+        st.error(
+            f"API key is not working",
+            icon="🚨",
+        )
+        with st.expander("Error details:"):
+            st.markdown(res["status_msg"])
+
+
 st.set_page_config(
     layout="centered",
     initial_sidebar_state="expanded",
@@ -63,33 +76,19 @@ else:
     if len(key_preview) > 0:
         st.markdown("#### Current uploaded key :")
         col0, col1, col2, col3, col4 = st.columns([0.17, 0.17, 0.32, 0.17, 0.17])
-        with col0:
-            if st.button("🔄 Refresh", type="primary"):
-                # when the button is clicked, the page will refresh by itself :)
-                log.debug("Refresh page")
 
-        with col1:
-            show = st.toggle("Show API key preview")
+        if col0.button("🔄 Refresh", type="primary"):
+            # when the button is clicked, the page will refresh by itself :)
+            log.debug("Refresh page")
 
-        with col2:
-            if show:
-                st.markdown(f"`{key_preview}`")
-            else:
-                st.markdown(f"`{'*' * len(key_preview)}`")
+        if col1.toggle("Show API key preview"):
+            col2.markdown(f"`{key_preview}`")
+        else:
+            col2.markdown(f"`{'*' * len(key_preview)}`")
 
-        with col3:
-            if st.button("🧪Test API key"):
-                with st.spinner("Testing your API key..."):
-                    res = api_client.test_openai_api_key()
-                if res["status"] == "200":
-                    st.success("✅ API key is working")
-                else:
-                    st.error(
-                        f"API key is not working",
-                        icon="🚨",
-                    )
-                    with st.expander("Details error : "):
-                        st.write(res["status_msg"])
+        if col3.button("🧪Test API key"):
+            with st.spinner("Testing your API key..."):
+                test_api_key()
 
         with col4:
             if st.checkbox("🗑️ Delete API key"):
@@ -109,27 +108,30 @@ else:
                 # when the button is clicked, the page will refresh by itself :)
                 log.debug("Refresh page")
     st.markdown("#### Enter your new API key (it overwrites the previous one):")
-    api_key = st.text_input("API Key", type="password")
+    with st.form("api_key", clear_on_submit=True):
+        api_key = st.text_input("API Key", type="password")
 
-    if st.button("Submit"):
-        if api_key:
-            with st.spinner("Uploading your secret api key..."):
-                res = api_client.set_openai_key(api_key=api_key)
-                if res.status == "200":
-                    st.success(
-                        "✅ API key saved successfully. You can refresh the list and test it!"
-                    )
-                else:
-                    st.error(
-                        f"Connection to verba backend failed -> details : {res.status_msg}",
-                        icon="🚨",
-                    )
-        else:
-            st.warning("Please enter a valid API key.")
+        if st.form_submit_button("Submit"):
+            if api_key:
+                with st.spinner("Uploading your secret api key..."):
+                    res = api_client.set_openai_key(api_key=api_key)
+                    if res.status == "200":
+                        st.success("✅ API key successfully pushed")
+                        # testing API key
+                        with st.spinner("Testing your API key..."):
+                            test_api_key()
+                    else:
+                        st.error(
+                            f"Connection to verba backend failed -> details : {res.status_msg}",
+                            icon="🚨",
+                        )
+            else:
+                st.warning("Please enter a valid API key.")
+
     st.subheader("Change Chatbot title", divider="blue")
     with st.form("chatbot_title", clear_on_submit=True):
         title = st.text_input("New chatbot welcome page title:")
-        col1, _, col3 = st.columns([0.20, 0.7, 0.20])
+        col1, _, col3 = st.columns([0.20, 0.6, 0.20])
         with col1:
             submit = st.form_submit_button("Submit new title", type="primary")
         with col3:
