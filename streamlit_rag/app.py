@@ -53,9 +53,8 @@ def main(verba_port, verba_base_url, chunk_size):
         )
         st.stop()
     else:
-        api_client = APIClient()
-
-    is_verba_responding = test_api_connection(api_client)
+        with APIClient() as client:
+            is_verba_responding = test_api_connection(client)
 
     if not is_verba_responding["is_ok"]:  # verba api not responding
         st.title(f"🤖 {TITLE} 🔴")
@@ -121,14 +120,15 @@ def main(verba_port, verba_base_url, chunk_size):
                         conversation = create_conversation_items(
                             st.session_state.get("messages", [])
                         )
-                        response, documents = generate_answer(
-                            prompt,
-                            api_client,
-                            conversation=conversation,
-                            max_nb_words=max_worlds_answers,
-                            min_nb_words=min_worlds_answers,
-                            return_documents=True,
-                        )
+                        with APIClient() as client:
+                            response, documents = generate_answer(
+                                prompt,
+                                client,
+                                conversation=conversation,
+                                max_nb_words=max_worlds_answers,
+                                min_nb_words=min_worlds_answers,
+                                return_documents=True,
+                            )
                         st.markdown(response)
                         append_documents_in_session_manager(prompt, documents)
                     if response:

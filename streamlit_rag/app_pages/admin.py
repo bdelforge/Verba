@@ -16,7 +16,9 @@ log = logging.getLogger(__name__)
 
 
 def test_api_key():
-    res = api_client.test_openai_api_key()
+    with APIClient() as client:
+        res = client.test_openai_api_key()
+
     if res["status"] == "200":
         st.success("✅ API key is working")
     else:
@@ -41,9 +43,8 @@ if (not "VERBA_PORT" in os.environ) or (not "VERBA_BASE_URL" in os.environ):
     )
     st.stop()
 else:
-    api_client = APIClient()
-
-is_verba_responding = test_api_connection(api_client)
+    with APIClient() as client:
+        is_verba_responding = test_api_connection(client)
 
 if not is_verba_responding["is_ok"] and not (
     "upload a key using /api/set_openai_key" in is_verba_responding["error_details"]
@@ -72,7 +73,9 @@ else:
     )
 
     st.subheader("Open AI API key", divider="blue")
-    key_preview = api_client.get_openai_key_preview()
+    with APIClient() as client:
+        key_preview = client.get_openai_key_preview()
+
     if len(key_preview) > 0:
         st.markdown("#### Current uploaded key :")
         col0, col1, col2, col3, col4 = st.columns([0.17, 0.17, 0.32, 0.17, 0.17])
@@ -93,9 +96,8 @@ else:
         with col4:
             if st.checkbox("🗑️ Delete API key"):
                 if st.button("⚠️Confirm (irreversible) ⚠️", type="primary"):
-                    with st.spinner("Removing your API key..."):
-                        success = api_client.unset_openai_key()
-                        if success:
+                    with st.spinner("Removing your API key..."), APIClient() as client:
+                        if client.unset_openai_key():
                             st.info("Key successfully removed")
                         else:
                             st.error("Something went wrong when deleting your key")
@@ -107,26 +109,26 @@ else:
             if st.button("🔄 Refresh", type="primary"):
                 # when the button is clicked, the page will refresh by itself :)
                 log.debug("Refresh page")
+
     st.markdown("#### Enter your new API key (it overwrites the previous one):")
     with st.form("api_key", clear_on_submit=True):
         api_key = st.text_input("API Key", type="password")
+        submitted = st.form_submit_button("Submit")
 
-        if st.form_submit_button("Submit"):
-            if api_key:
-                with st.spinner("Uploading your secret api key..."):
-                    res = api_client.set_openai_key(api_key=api_key)
-                    if res.status == "200":
-                        st.success("✅ API key successfully pushed")
-                        # testing API key
-                        with st.spinner("Testing your API key..."):
-                            test_api_key()
-                    else:
-                        st.error(
-                            f"Connection to verba backend failed -> details : {res.status_msg}",
-                            icon="🚨",
-                        )
+    if submitted and api_key:
+        with st.spinner("Uploading your secret api key..."), APIClient() as client:
+            res = client.set_openai_key(api_key=api_key)
+            if res.status == "200":
+                st.success("✅ API key successfully pushed")
+                with st.spinner("Testing your API key..."):
+                    test_api_key()
             else:
-                st.warning("Please enter a valid API key.")
+                st.error(
+                    f"Connection to verba backend failed -> details: {res.status_msg}",
+                    icon="🚨",
+                )
+    elif submitted:
+        st.warning("Please enter a valid API key.")
 
     st.subheader("Change Chatbot title", divider="blue")
     with st.form("chatbot_title", clear_on_submit=True):
@@ -154,9 +156,8 @@ else:
     if col0.checkbox(":red[Reset cache]") and col1.button(
         "I am sure I want to reset cache", type="primary"
     ):
-        with st.spinner("Resetting cache..."):
-            success = api_client.reset_cache()
-            if success:
+        with st.spinner("Resetting cache..."), APIClient() as client:
+            if client.reset_cache():
                 st.info("Cache successfully reset")
             else:
                 st.error("Something went wrong when resetting cache")

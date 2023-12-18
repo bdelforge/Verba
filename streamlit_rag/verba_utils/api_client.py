@@ -53,6 +53,29 @@ class APIClient:
     def __init__(self):
         self.api_routes = APIRoutes()
         self.server_settings = ServerSettings()
+        self.session = requests.Session()
+        self.session.headers.update({"content-type": "application/json"})
+
+    def __del__(self):
+        """
+        Destructor method called when an instance of APIClient is garbage collected.
+        """
+        self.close_session()
+
+    def __enter__(self):
+        """Enter the runtime context for the API client."""
+        return self  # You can return self or another resource to be managed.
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        """Exit the runtime context and close the session."""
+        self.close_session()  # Clean up the resource when exiting the context.
+
+    def close_session(self):
+        """
+        Closes the underlying HTTP session.
+        You should call this method when you're done with the APIClient instance.
+        """
+        self.session.close()
 
     def _build_url(self, endpoint: str) -> str:
         """Helper function to build the endpoint url
@@ -63,7 +86,7 @@ class APIClient:
         return f"{self.server_settings.base_api_url}/{endpoint}"
 
     def make_request(
-        self, method, endpoint, params=None, data=None, json=None
+        self, method, endpoint, params=None, json=None
     ) -> requests.Response:
         """Generic method to make any request to the backend
 
@@ -74,19 +97,10 @@ class APIClient:
         :param json: defaults to None
         :return _type_:  requests.Response
         """
-        headers = {
-            "content-type": "application/json",
-        }
         url = self._build_url(endpoint)
         log.info(f"Sending {method} request to {url}")
-        return requests.request(
-            method,
-            url,
-            params=params,
-            json=json,
-            # data=data,
-            headers=headers,
-        )
+        with self.session.request(method, url, params=params, json=json) as response:
+            return response
 
     @retry(
         stop=stop_after_attempt(4), wait=wait_exponential(multiplier=1, min=2, max=10)

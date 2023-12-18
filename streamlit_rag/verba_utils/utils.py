@@ -13,7 +13,6 @@ from verba_utils.payloads import (
     DocumentSearchQueryResponsePayload,
     GeneratePayload,
     GenerateResponsePayload,
-    SearchQueryResponsePayload,
 )
 
 log = logging.getLogger(__name__)
@@ -231,3 +230,25 @@ def reset_chatbot_title():
             del db[key]
         else:
             log.info(f"{weaviate_tenant} is not in the shelve database.")
+
+
+def get_chunk_size(default: int = 300) -> int:
+    try:
+        return int(os.environ.get("CHUNK_SIZE", default))
+    except ValueError:
+        log.warn(
+            f"Cannot cast 'CHUNK_SIZE' to int, value : {os.environ.get('CHUNK_SIZE', default)}. Setting it to default {default}"
+        )
+        return default
+
+
+def capitalize_first_letter(input_string: str) -> str | None:
+    if not input_string:
+        return input_string
+    # Split the string into words, capitalize the first letter of the first word,
+    # and make sure the rest of the words are in lowercase.
+    words = input_string.split()
+    # Capitalize the first word and lowercase the rest of the words
+    words = [words[0].capitalize()] + [word.lower() for word in words[1:]]
+    # Join the words back into a single string
+    return " ".join(words)

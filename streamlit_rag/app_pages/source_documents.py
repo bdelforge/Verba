@@ -27,9 +27,8 @@ if (not "VERBA_PORT" in os.environ) or (not "VERBA_BASE_URL" in os.environ):
     )
     st.stop()
 else:
-    api_client = APIClient()
-
-is_verba_responding = test_api_connection(api_client)
+    with APIClient() as client:
+        is_verba_responding = test_api_connection(client)
 
 title = "📁 Source documents"
 
