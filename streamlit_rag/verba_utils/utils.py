@@ -62,6 +62,20 @@ def create_conversation_items(
     return conversation_items
 
 
+def test_api_key(client: APIClient):
+    res = client.test_openai_api_key()
+
+    if res["status"] == "200":
+        st.success("✅ API key is working")
+    else:
+        st.error(
+            f"API key is not working",
+            icon="🚨",
+        )
+        with st.expander("Error details:"):
+            st.markdown(res["status_msg"])
+
+
 def generate_answer(
     prompt: str,
     api_client: APIClient,

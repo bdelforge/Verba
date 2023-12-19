@@ -33,5 +33,5 @@ setup(
     python_requires=">=3.10",
     long_description=readme(),
     install_requires=requirements(),
-    packages=["verba_utils"],
+    packages=["verba_utils", "app_pages"],
 )

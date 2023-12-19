@@ -8,26 +8,12 @@ from verba_utils.utils import (
     get_chatbot_title,
     reset_chatbot_title,
     store_chatbot_title,
+    test_api_key,
 )
 
 BASE_ST_DIR = pathlib.Path(os.path.dirname(__file__)).parent
 
 log = logging.getLogger(__name__)
-
-
-def test_api_key():
-    with APIClient() as client:
-        res = client.test_openai_api_key()
-
-    if res["status"] == "200":
-        st.success("✅ API key is working")
-    else:
-        st.error(
-            f"API key is not working",
-            icon="🚨",
-        )
-        with st.expander("Error details:"):
-            st.markdown(res["status_msg"])
 
 
 st.set_page_config(
@@ -62,7 +48,7 @@ if not is_verba_responding["is_ok"] and not (
         # when the button is clicked, the page will refresh by itself :)
         log.debug("Refresh page")
 
-else:
+else:  # Verba backend is up
     st.title("⚙️ Administration 🟢")
     st.info(
         """
@@ -75,60 +61,52 @@ else:
     st.subheader("Open AI API key", divider="blue")
     with APIClient() as client:
         key_preview = client.get_openai_key_preview()
+        if len(key_preview) > 0:
+            st.markdown("#### Current uploaded key :")
+            col0, col1, col2, col3, col4 = st.columns([0.17, 0.17, 0.32, 0.17, 0.17])
 
-    if len(key_preview) > 0:
-        st.markdown("#### Current uploaded key :")
-        col0, col1, col2, col3, col4 = st.columns([0.17, 0.17, 0.32, 0.17, 0.17])
+            if col0.button("🔄 Refresh", type="primary"):
+                # when the button is clicked, the page will refresh by itself :)
+                log.debug("Refresh page")
 
-        if col0.button("🔄 Refresh", type="primary"):
-            # when the button is clicked, the page will refresh by itself :)
-            log.debug("Refresh page")
-
-        if col1.toggle("Show API key preview"):
-            col2.markdown(f"`{key_preview}`")
-        else:
-            col2.markdown(f"`{'*' * len(key_preview)}`")
-
-        if col3.button("🧪Test API key"):
-            with st.spinner("Testing your API key..."):
-                test_api_key()
-
-        with col4:
-            if st.checkbox("🗑️ Delete API key"):
-                if st.button("⚠️Confirm (irreversible) ⚠️", type="primary"):
-                    with st.spinner("Removing your API key..."), APIClient() as client:
+            col2.markdown(
+                f"`{key_preview if col1.toggle('Show API key preview') else '*' * len(key_preview)}`"
+            )
+            if col3.button("🧪Test API key"):
+                with st.spinner("Testing your API key..."):
+                    test_api_key(client)
+            with col4:
+                if st.checkbox("🗑️ Delete API key") and st.button("⚠️Confirm"):
+                    with st.spinner("Removing your API key..."):
                         if client.unset_openai_key():
                             st.info("Key successfully removed")
                         else:
                             st.error("Something went wrong when deleting your key")
-
-    else:
-        st.header("No Open AI API key uploaded yet")
-        col0, col1, col2, col3, col4 = st.columns([0.17, 0.17, 0.32, 0.17, 0.17])
-        with col0:
+        else:
+            st.markdown("#### No Open AI API key uploaded yet")
             if st.button("🔄 Refresh", type="primary"):
                 # when the button is clicked, the page will refresh by itself :)
                 log.debug("Refresh page")
 
-    st.markdown("#### Enter your new API key (it overwrites the previous one):")
-    with st.form("api_key", clear_on_submit=True):
-        api_key = st.text_input("API Key", type="password")
-        submitted = st.form_submit_button("Submit")
+        st.markdown("#### Enter your new API key (it overwrites the previous one):")
+        with st.form("api_key", clear_on_submit=True):
+            api_key = st.text_input("API Key", type="password")
+            submitted = st.form_submit_button("Submit")
 
-    if submitted and api_key:
-        with st.spinner("Uploading your secret api key..."), APIClient() as client:
-            res = client.set_openai_key(api_key=api_key)
-            if res.status == "200":
-                st.success("✅ API key successfully pushed")
-                with st.spinner("Testing your API key..."):
-                    test_api_key()
-            else:
-                st.error(
-                    f"Connection to verba backend failed -> details: {res.status_msg}",
-                    icon="🚨",
-                )
-    elif submitted:
-        st.warning("Please enter a valid API key.")
+        if submitted and api_key:
+            with st.spinner("Uploading your secret api key..."):
+                res = client.set_openai_key(api_key=api_key)
+                if res.status == "200":
+                    st.success("✅ API key successfully pushed")
+                    with st.spinner("Testing your API key..."):
+                        test_api_key(client)
+                else:
+                    st.error(
+                        f"Connection to verba backend failed -> details: {res.status_msg}",
+                        icon="🚨",
+                    )
+        elif submitted:  # Submit button is clicked but text input empty
+            st.warning("Please enter a valid API key.")
 
     st.subheader("Change Chatbot title", divider="blue")
     with st.form("chatbot_title", clear_on_submit=True):
@@ -151,6 +129,7 @@ else:
             st.success(
                 f"✅ Chatbot title successfully set to default (`{get_chatbot_title()}`)"
             )
+
     st.subheader(":red[Danger Zone]", divider="red")
     col0, col1 = st.columns(2)
     if col0.checkbox(":red[Reset cache]") and col1.button(
