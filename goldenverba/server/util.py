@@ -12,11 +12,18 @@ def get_openai_api_config():
         "api_version": os.getenv("OPENAI_API_VERSION"),
         "model": os.getenv("VERBA_MODEL", default="gpt-4")
     }
+    
+def create_folder(folder_path:str):
+    if not os.path.exists(folder_path):
+        # The folder does not exist, so create it
+        os.makedirs(folder_path)
+
 
 def check_api_key():
     if "OPENAI_API_KEY" in os.environ:
         return True
     weaviate_tenant = os.getenv('WEAVIATE_TENANT',default='default_tenant')
+    create_folder("shelve")
     with shelve.open(f"shelve/key_cache_{weaviate_tenant}") as db:
         key = db.get("api_key",None)
     if key:
@@ -32,6 +39,7 @@ def check_manager_initialized(manager):
 
 def store_api_key(key):
     weaviate_tenant = os.getenv('WEAVIATE_TENANT', default='default_tenant')
+    create_folder("shelve")
     with shelve.open(f"shelve/key_cache_{weaviate_tenant}") as db:
         db["api_key"] = key
     
@@ -43,6 +51,7 @@ def remove_api_key():
     msg.info("OPENAI_API_KEY removed for env variables")
 
     weaviate_tenant = os.getenv("WEAVIATE_TENANT", default="default_tenant")
+    create_folder("shelve")
     with shelve.open(f"shelve/key_cache_{weaviate_tenant}") as db:
         if "api_key" in db:
             del db["api_key"]

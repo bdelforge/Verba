@@ -203,6 +203,12 @@ def get_ordered_all_filenames(
     return sorted([e.doc_name for e in documents])
 
 
+def create_folder(folder_path:str):
+    if not os.path.exists(folder_path):
+        # The folder does not exist, so create it
+        os.makedirs(folder_path)
+        
+
 def store_chatbot_title(title: str):
     """This stores in shelve the custom title set by the user
 
@@ -211,6 +217,7 @@ def store_chatbot_title(title: str):
     weaviate_tenant = os.getenv("WEAVIATE_TENANT", default="default_tenant")
     log.info(f"Storing new chatbot title (tenant {weaviate_tenant}) : {title}")
 
+    create_folder("shelve")
     with shelve.open(f"shelve/key_cache_{weaviate_tenant}") as db:
         db["title"] = title
 
@@ -222,6 +229,7 @@ def get_chatbot_title(default_name: str = "Worldline MS Chatbot") -> str:
     :return str:
     """
     weaviate_tenant = os.getenv("WEAVIATE_TENANT", default="default_tenant")
+    create_folder("shelve")
     with shelve.open(f"shelve/key_cache_{weaviate_tenant}") as db:
         key = f"title"
         if key in db:
@@ -237,7 +245,7 @@ def reset_chatbot_title():
     """This removes the custom title stored"""
     weaviate_tenant = os.getenv("WEAVIATE_TENANT", default="default_tenant")
     log.info(f"Resetting chatbot title (tenant {weaviate_tenant})")
-
+    create_folder("shelve")
     with shelve.open(f"shelve/key_cache_{weaviate_tenant}") as db:
         key = f"title"
         if key in db:
