@@ -1,7 +1,10 @@
+import json
 import logging
 from typing import Dict, NamedTuple
+from urllib.parse import urlparse
 
 import requests
+import websockets
 from pydantic import Field
 from pydantic_core._pydantic_core import ValidationError
 from pydantic_settings import BaseSettings
@@ -47,6 +50,37 @@ class ServerSettings(BaseSettings):
     @property
     def base_api_url(self) -> str:
         return f"{self.verba_base_url}:{self.verba_port}/api"
+
+
+class WebSocketClient:
+    def __init__(self) -> None:
+        self.server_settings = ServerSettings()
+        self.host = urlparse(self.server_settings.verba_base_url).hostname
+        self.stream_url = (
+            f"ws://{self.host}:{self.server_settings.verba_port}/ws/generate_stream"
+        )
+
+    async def generate_stream(self, query: str, context: str, conversation: list = []):
+        # A coroutine to send data and receive the response from the server via WebSocket
+        async with websockets.connect(self.stream_url) as websocket:
+            # Send the initial text to the WebSocket server
+            payload = GeneratePayload(
+                query=query, context=context, conversation=conversation
+            )
+            await websocket.send(json.dumps(payload.model_dump()))
+
+            # Start receiving streaming data from the server
+            try:
+                async for message in websocket:
+                    data = json.loads(message)
+
+                    yield data["message"]
+
+                    if data.get("finish_reason", None) == "stop":
+                        break
+
+            except websockets.exceptions.ConnectionClosed as e:
+                log.warn(f"Websocket connection closed: {e}")
 
 
 class APIClient:

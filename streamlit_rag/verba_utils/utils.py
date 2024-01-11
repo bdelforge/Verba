@@ -13,6 +13,7 @@ from verba_utils.payloads import (
     DocumentSearchQueryResponsePayload,
     GeneratePayload,
     GenerateResponsePayload,
+    QueryResponsePayload,
 )
 
 log = logging.getLogger(__name__)
@@ -76,23 +77,19 @@ def test_api_key(client: APIClient):
             st.markdown(res["status_msg"])
 
 
-def generate_answer(
+def search_documents(
     prompt: str,
     api_client: APIClient,
-    conversation: List[ConversationItem] = [],
     min_nb_words: int = None,
     max_nb_words: int = None,
-    return_documents: bool = False,
-) -> str | Tuple[str, List]:
+) -> Tuple[str, QueryResponsePayload]:
     """
-    Generate answers to a list of questions. Uses the previously defined query_verba
+    Searches relevant documents
     :param prompt: str
     :param api_client: APIClient
-    :param conversation: List[ConversationItem] (use utils.create_conversation_items to create it).
     :param min_nb_words: int
-    :param max_nb_words: int
     :param return_documents: bool default False. If true returns (text_response, documents_list)
-    :returns: str | Tuple(str, List)
+    :returns: Tuple(elaborated_question, QueryResponsePayload)
     """
 
     # Apply the logic for setting min/max words depending on the provided values
@@ -110,36 +107,121 @@ def generate_answer(
     elaborated_question = (str(prompt) + str(question_appendix)).encode("utf-8")
     log.info(f"Cleaned user query : {elaborated_question}")
 
+    if not test_api_connection(api_client):
+        log.error(
+            f"Verba API not available {api_client._build_url(api_client.api_routes.health)}, query not submitted"
+        )
+        response = QueryResponsePayload(system="Verba API not available")
+        return elaborated_question, response
+
+    query_response = api_client.query(elaborated_question)
+    if query_response.system is None:
+        return elaborated_question, query_response
+
+    else:  # Error when retrieving documents (Verba side)
+        log.warning(
+            f'Something went wrong when retrieving documents (verba side) : "{query_response.system}"'
+        )
+        return elaborated_question, QueryResponsePayload(system=query_response.system)
+
+
+def generate_answer(
+    prompt: str,
+    search_documents_result: QueryResponsePayload,
+    api_client: APIClient,
+    conversation: List[ConversationItem] = [],
+) -> str | Tuple[str, List]:
+    """
+    Generate answers to a list of questions. Uses the previously defined query_verba
+    :param prompt: str
+    :param search_documents_result: QueryResponsePayload (result of search_documents())
+    :param api_client: APIClient
+    :param conversation: List[ConversationItem] (use utils.create_conversation_items to create it).
+    :param return_documents: bool default False. If true returns (text_response, documents_list)
+    :returns: str | Tuple(str, List)
+    """
     if test_api_connection(api_client):
-        query_response = api_client.query(elaborated_question)
-        if (
-            query_response.system is not None
-        ):  # Error when retrieving documents (Verba side)
-            log.warning(
-                f'Something went wrong when retrieving documents (verba side) : "{query_response.system}"'
+        response = api_client.generate(
+            GeneratePayload(
+                query=prompt,
+                context=search_documents_result.context,
+                conversation=conversation,
             )
-            response = GenerateResponsePayload(system=query_response.system)
-        else:  # query went fine, now generate LLM response
-            response = api_client.generate(
-                GeneratePayload(
-                    query=prompt,
-                    context=query_response.context,
-                    conversation=conversation,
-                )
-            )
-            if isinstance(response.system, CachedResponse):
-                # Verba returns a different payload format when the answer is from cache...
-                response.system = response.system.message
+        )
+        if isinstance(response.system, CachedResponse):
+            # Verba returns a different payload format when the answer is from cache...
+            response.system = response.system.message
     else:
         log.error(
             f"Verba API not available {api_client._build_url(api_client.api_routes.health)}, query not submitted"
         )
         response = GenerateResponsePayload(system="Verba API not available")
 
-    if return_documents:
-        return response.system, query_response.documents
-    else:
-        return response.system
+    return response.system
+
+
+# def generate_answer(
+#     prompt: str,
+#     api_client: APIClient,
+#     conversation: List[ConversationItem] = [],
+#     return_documents: bool = False,
+# ) -> str | Tuple[str, List]:
+#     """
+#     Generate answers to a list of questions. Uses the previously defined query_verba
+#     :param prompt: str
+#     :param api_client: APIClient
+#     :param conversation: List[ConversationItem] (use utils.create_conversation_items to create it).
+#     :param min_nb_words: int
+#     :param max_nb_words: int
+#     :param return_documents: bool default False. If true returns (text_response, documents_list)
+#     :returns: str | Tuple(str, List)
+#     """
+
+#     # Apply the logic for setting min/max words depending on the provided values
+#     if max_nb_words is None and min_nb_words is not None:
+#         max_nb_words = min_nb_words * 2
+#     elif min_nb_words is None and max_nb_words is not None:
+#         min_nb_words = max_nb_words // 2
+
+#     # Add the appendix only if both min_nb_words and max_nb_words have values
+#     if min_nb_words is not None and max_nb_words is not None:
+#         question_appendix = f" Please provide an elaborated answer in {min_nb_words} to {max_nb_words} words."
+#     else:
+#         question_appendix = ""
+
+#     elaborated_question = (str(prompt) + str(question_appendix)).encode("utf-8")
+#     log.info(f"Cleaned user query : {elaborated_question}")
+
+#     if test_api_connection(api_client):
+#         query_response = api_client.query(elaborated_question)
+#         if (
+#             query_response.system is not None
+#         ):  # Error when retrieving documents (Verba side)
+#             log.warning(
+#                 f'Something went wrong when retrieving documents (verba side) : "{query_response.system}"'
+#             )
+#             response = GenerateResponsePayload(system=query_response.system)
+#         else:  # query went fine, now generate LLM response
+#             response = api_client.generate(
+#                 GeneratePayload(
+#                     query=elaborated_question,
+#                     context=query_response.context,
+#                     conversation=conversation,
+#                 )
+#             )
+#             if isinstance(response.system, CachedResponse):
+#                 # Verba returns a different payload format when the answer is from cache...
+#                 response.system = response.system.message
+#     else:
+#         log.error(
+#             f"Verba API not available {api_client._build_url(api_client.api_routes.health)}, query not submitted"
+#         )
+#         response = GenerateResponsePayload(system="Verba API not available")
+
+#     if return_documents:
+#         return response.system, query_response.documents
+#     else:
+#         return response.system
 
 
 def append_documents_in_session_manager(prompt: str, documents: List[Dict]):
@@ -203,11 +285,11 @@ def get_ordered_all_filenames(
     return sorted([e.doc_name for e in documents])
 
 
-def create_folder(folder_path:str):
+def create_folder(folder_path: str):
     if not os.path.exists(folder_path):
         # The folder does not exist, so create it
         os.makedirs(folder_path)
-        
+
 
 def store_chatbot_title(title: str):
     """This stores in shelve the custom title set by the user
